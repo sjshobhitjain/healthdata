@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Health Log — Re-Polarize & Recover</title>
+<style>
+  :root{--bg:#0f1720;--card:#182430;--ink:#e7eef5;--mut:#8ba0b3;--acc:#4fd1c5;--warn:#f6ad55;--bad:#fc8181;--ok:#68d391;--line:#26323f;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.45;padding:16px;max-width:860px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px} h2{font-size:15px;margin:18px 0 8px;color:var(--acc);border-bottom:1px solid var(--line);padding-bottom:4px}
+  .sub{color:var(--mut);font-size:12px;margin-bottom:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:14px}
+  button:hover{border-color:var(--acc)} button.primary{background:var(--acc);color:#04241f;border:none;font-weight:600}
+  input[type=date],input[type=number],select,textarea{background:#0f1a24;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:14px}
+  input[type=number]{width:90px}
+  label.chk{display:flex;gap:8px;align-items:center;padding:6px 0;cursor:pointer;font-size:14px}
+  label.chk input{width:18px;height:18px;accent-color:var(--acc)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .metrics label{font-size:12px;color:var(--mut);display:block}
+  textarea{width:100%;min-height:56px;resize:vertical;margin-top:4px}
+  .note-lbl{font-size:13px;color:var(--acc);margin-top:8px;display:block}
+  .wins li{list-style:none;display:flex;gap:8px;align-items:center;margin:4px 0}
+  .wins input[type=text]{flex:1;background:#0f1a24;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px}
+  .wins .del{border:none;background:transparent;color:var(--warn);font-size:16px;padding:2px 6px}
+  ul.wins{padding-left:0;margin:6px 0}
+  .status{font-size:12px;color:var(--acc)} .muted{color:var(--mut);font-size:12px}
+  .ref{font-size:12px;color:var(--mut)} .ref b{color:var(--ink)}
+  .pill{display:inline-block;background:#0f1a24;border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:11px;color:var(--mut);margin:2px}
+  .hist{max-height:180px;overflow:auto;font-size:13px}
+  .hist div{padding:4px 6px;border-bottom:1px solid var(--line);cursor:pointer} .hist div:hover{background:#0f1a24}
+  /* tabs */
+  .tabs{display:flex;gap:6px;margin-bottom:14px;position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:10}
+  .tabs button{flex:1;font-weight:600}
+  .tabs button.active{background:var(--acc);color:#04241f;border:none}
+  .tabpane{display:none} .tabpane.active{display:block}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600}
+  .kpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:10px}
+  .kpi .box{background:#0f1a24;border:1px solid var(--line);border-radius:10px;padding:10px}
+  .kpi .n{font-size:20px;font-weight:700} .kpi .l{font-size:11px;color:var(--mut)}
+  .good{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+  canvas{width:100%;height:auto;background:#0f1a24;border:1px solid var(--line);border-radius:10px;margin-bottom:12px}
+  .yes{color:var(--ok)} .no{color:var(--mut)}
+</style>
+</head>
+<body>
+<h1>🫀 Health Log — Re-Polarize &amp; Recover</h1>
+<div class="sub">Private &amp; offline. Saved automatically in <b>this browser</b> (text included). Export for a real backup file.</div>
+
+<div class="tabs">
+  <button id="tab-daily" class="active" onclick="showTab('daily')">📅 Daily</button>
+  <button id="tab-weekly" onclick="showTab('weekly')">🗓️ Weekly</button>
+  <button id="tab-plan" onclick="showTab('plan')">📋 Plan</button>
+  <button id="tab-report" onclick="showTab('report')">📈 Report</button>
+</div>
+
+<!-- ================= DAILY ================= -->
+<div id="pane-daily" class="tabpane active">
+  <div class="card row">
+    <button onclick="shiftDay(-1)">◀ Prev</button>
+    <input type="date" id="date" onchange="loadDate()">
+    <button onclick="shiftDay(1)">Next ▶</button>
+    <button onclick="today()">Today</button>
+    <span id="status" class="status"></span>
+  </div>
+
+  <div class="card ref">
+    <b>Weekly template:</b> 2× HIIT 4×4 (159–168 bpm, mornings) · 2× Zone 2 “CP” (&lt;124 bpm, ≥1 outdoor) · 1× Strength · 1–2 rest.
+    <div style="margin-top:6px">
+      <span class="pill">Z2 easy 106–124</span><span class="pill">Z3 grey — avoid 125–141</span>
+      <span class="pill">Z4 142–158</span><span class="pill">Z5 VO₂max 159–177</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Today’s training</h2>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="s_done"> Worked out</label>
+      <select id="s_type">
+        <option value="">— type —</option><option>HIIT 4×4</option><option>Zone 2 (CP)</option>
+        <option>Strength</option><option>Walk</option><option>Rest</option><option>Other</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="s_morning"> Morning</label>
+      <label class="chk"><input type="checkbox" id="s_zone"> Hit HIIT zone 159–168</label>
+    </div>
+    <div id="plannedToday" class="muted" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Daily habits</h2>
+    <div class="grid">
+      <label class="chk"><input type="checkbox" id="h_wake"> Consistent wake time</label>
+      <label class="chk"><input type="checkbox" id="h_greens"> Greens + inulin first</label>
+      <label class="chk"><input type="checkbox" id="h_protein"> Protein-first (~100 g)</label>
+      <label class="chk"><input type="checkbox" id="h_dinner"> Dinner by 8 pm</label>
+      <label class="chk"><input type="checkbox" id="h_caffeine"> No caffeine after 2 pm</label>
+      <label class="chk"><input type="checkbox" id="h_mag"> Magnesium before bed</label>
+      <label class="chk"><input type="checkbox" id="h_noalc"> No alcohol today</label>
+      <label class="chk"><input type="checkbox" id="h_screens"> Screens dim before bed</label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <span class="muted">Post-meal walks:</span>
+      <select id="walks"><option value="0">0</option><option>1</option><option>2</option><option>3</option></select>
+      <span class="muted">Sleep hours:</span><input type="number" id="sleep" step="0.1" min="0" max="14" placeholder="7.0">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Metrics (optional)</h2>
+    <div class="metrics">
+      <div><label>Weight (lb)</label><input type="number" id="m_weight" step="0.1"></div>
+      <div><label>Waist (in)</label><input type="number" id="m_waist" step="0.1"></div>
+      <div><label>VO₂max</label><input type="number" id="m_vo2" step="0.1"></div>
+      <div><label>Resting HR</label><input type="number" id="m_rhr" step="1"></div>
+      <div><label>HRV (ms)</label><input type="number" id="m_hrv" step="1"></div>
+      <div><label>HR recovery</label><input type="number" id="m_rec" step="1"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">✅ Today’s wins</h2>
+    <div class="muted">Add your own checkboxes — anything to celebrate.</div>
+    <ul class="wins" id="wins"></ul>
+    <button onclick="addWin()">+ Add a win</button>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">📝 Notes (auto-saved as you type)</h2>
+    <label class="note-lbl">How I feel / energy</label><textarea id="n_feel"></textarea>
+    <label class="note-lbl">Pain / hurt (where, when)</label><textarea id="n_pain"></textarea>
+    <label class="note-lbl">What I ate</label><textarea id="n_food"></textarea>
+    <label class="note-lbl">Sleep quality / awakenings / dreams</label><textarea id="n_sleep"></textarea>
+    <label class="note-lbl">Other</label><textarea id="n_other"></textarea>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Backup &amp; data</h2>
+    <div class="row">
+      <button class="primary" onclick="exportJSON()">⬇ Export JSON (backup)</button>
+      <button onclick="exportCSV()">⬇ Export CSV</button>
+      <button onclick="document.getElementById('imp').click()">⬆ Import JSON</button>
+      <input type="file" id="imp" accept="application/json" style="display:none" onchange="importJSON(event)">
+    </div>
+    <div class="muted" style="margin-top:8px">Data lives in this browser. Export weekly to a file in this folder.</div>
+    <h2>Recent entries</h2>
+    <div class="hist" id="hist"></div>
+  </div>
+</div>
+
+<!-- ================= WEEKLY ================= -->
+<div id="pane-weekly" class="tabpane">
+  <div class="card row">
+    <button onclick="shiftWeek(-1)">◀ Prev week</button>
+    <span id="weekLabel" style="font-weight:600"></span>
+    <button onclick="shiftWeek(1)">Next week ▶</button>
+    <button onclick="thisWeek()">This week</button>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Week summary</h2>
+    <div class="kpi" id="weekKpi"></div>
+    <div id="polarNote" class="muted"></div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Days</h2>
+    <table id="weekTable"><thead><tr>
+      <th>Day</th><th>Session</th><th>HIIT zone</th><th>Sleep</th><th>Habits</th><th>Wins</th><th>Plan</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+</div>
+
+<!-- ================= PLAN ================= -->
+<div id="pane-plan" class="tabpane">
+  <div class="card">
+    <h2 style="margin-top:0">🎯 Plan targets</h2>
+    <div class="muted" style="margin-bottom:8px">How often each session should happen. <b>Every N days</b> = the max gap you want between them (0 = no gap rule). These drive the adherence scoring in the Report.</div>
+    <table id="planTargets"><thead><tr>
+      <th>Session</th><th>Per week</th><th>Every N days (max gap)</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="row" style="margin-top:8px">
+      <span class="muted">Max gap between any training days:</span>
+      <input type="number" id="p_anygap" min="0" max="30" step="1" style="width:70px">
+      <span class="muted">days</span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" onclick="savePlanTargets()">Save targets</button>
+      <button onclick="resetPlanDefaults()">Reset to plan defaults</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">📆 Planned sessions</h2>
+    <div class="muted" style="margin-bottom:8px">Schedule what you intend to do. Weekly template = 2× HIIT (Tue + Sat AM) · 2× Zone 2 (Wed + Sun) · 1× Strength (Thu).</div>
+    <div class="row">
+      <button onclick="applyTemplate(0)">Apply template → this week</button>
+      <button onclick="applyTemplate(1)">→ next week</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <input type="date" id="p_date">
+      <select id="p_type">
+        <option>HIIT 4×4</option><option>Zone 2 (CP)</option><option>Strength</option><option>Walk</option><option>Rest</option>
+      </select>
+      <button onclick="addPlanned()">+ Add planned</button>
+    </div>
+    <table id="planList" style="margin-top:10px"><thead><tr>
+      <th>Date</th><th>Planned</th><th>Status</th><th></th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+</div>
+
+<!-- ================= REPORT ================= -->
+<div id="pane-report" class="tabpane">
+  <div class="card">
+    <h2 style="margin-top:0">📋 Plan adherence <span class="muted" id="adhWindow"></span></h2>
+    <div class="kpi" id="adhKpi"></div>
+    <table id="adhTable"><thead><tr>
+      <th>Rule</th><th>Done</th><th>Target</th><th>Current gap</th><th>Longest gap</th><th>Adherence</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="muted" id="adhPlanNote" style="margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Weekly training &amp; sleep</h2>
+    <canvas id="c_train" height="220"></canvas>
+    <canvas id="c_sleep" height="180"></canvas>
+    <div class="muted">Bars: total workouts vs true HIIT (type=HIIT &amp; hit zone). Green line: avg sleep h.</div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Metric trends (from logged metrics)</h2>
+    <canvas id="c_vo2" height="170"></canvas>
+    <canvas id="c_rhr" height="170"></canvas>
+    <canvas id="c_hrv" height="170"></canvas>
+    <canvas id="c_waist" height="170"></canvas>
+    <div class="muted">Only days where you entered a metric are plotted. Log metrics on the Daily tab.</div>
+  </div>
+</div>
+
+<script>
+const KEY="healthLogV1";
+const $=id=>document.getElementById(id);
+const FIELDS_CHK=["s_done","s_morning","s_zone","h_wake","h_greens","h_protein","h_dinner","h_caffeine","h_mag","h_noalc","h_screens"];
+const HABITS=["h_wake","h_greens","h_protein","h_dinner","h_caffeine","h_mag","h_noalc","h_screens"];
+const FIELDS_VAL=["s_type","walks","sleep","m_weight","m_waist","m_vo2","m_rhr","m_hrv","m_rec","n_feel","n_pain","n_food","n_sleep","n_other"];
+let store=load();
+let weekMon=mondayOf(new Date());
+
+function load(){try{return JSON.parse(localStorage.getItem(KEY))||{}}catch(e){return {}}}
+function save(){localStorage.setItem(KEY,JSON.stringify(store));flash("Saved ✓");renderHist();if($("pane-weekly").classList.contains("active"))renderWeekly();if($("pane-report").classList.contains("active"))renderReport();}
+function flash(t){const s=$("status");if(!s)return;s.textContent=t;clearTimeout(s._t);s._t=setTimeout(()=>s.textContent="",1200)}
+function todayStr(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)}
+function ymd(d){return d.toISOString().slice(0,10)}
+function mondayOf(d){const x=new Date(d);const off=(x.getDay()+6)%7;x.setDate(x.getDate()-off);x.setHours(0,0,0,0);return x}
+
+/* ---------- daily ---------- */
+function collect(){
+  const e={chk:{},val:{},wins:[]};
+  FIELDS_CHK.forEach(f=>e.chk[f]=$(f).checked);
+  FIELDS_VAL.forEach(f=>e.val[f]=$(f).value);
+  document.querySelectorAll("#wins li").forEach(li=>{
+    e.wins.push({text:li.querySelector("input[type=text]").value,done:li.querySelector("input[type=checkbox]").checked});
+  });
+  return e;
+}
+function persist(){store[$("date").value]=collect();save()}
+function render(e){
+  e=e||{chk:{},val:{},wins:[]};
+  FIELDS_CHK.forEach(f=>$(f).checked=!!(e.chk&&e.chk[f]));
+  FIELDS_VAL.forEach(f=>$(f).value=(e.val&&e.val[f]!=null)?e.val[f]:"");
+  const ul=$("wins");ul.innerHTML="";(e.wins||[]).forEach(w=>addWin(w.text,w.done));
+}
+function loadDate(){render(store[$("date").value]);updatePlannedToday()}
+function shiftDay(n){const d=new Date($("date").value);d.setDate(d.getDate()+n);$("date").value=ymd(d);loadDate()}
+function today(){$("date").value=todayStr();loadDate()}
+function addWin(text="",done=false){
+  const ul=$("wins");const li=document.createElement("li");
+  li.innerHTML=`<input type="checkbox" ${done?"checked":""}><input type="text" placeholder="e.g. Held 165 bpm on all 4 intervals"><button class="del">✕</button>`;
+  li.querySelector("input[type=text]").value=text;
+  li.querySelectorAll("input").forEach(i=>i.addEventListener("input",persist));
+  li.querySelector(".del").onclick=()=>{li.remove();persist()};
+  ul.appendChild(li);
+}
+function renderHist(){
+  const h=$("hist");if(!h)return;const keys=Object.keys(store).sort().reverse().slice(0,30);
+  h.innerHTML=keys.length?"":"<span class='muted'>No entries yet.</span>";
+  keys.forEach(k=>{const e=store[k];const done=e.chk&&e.chk.s_done?"🏋️":"·";
+    const type=(e.val&&e.val.s_type)||"";const sleep=(e.val&&e.val.sleep)?e.val.sleep+"h":"";
+    const d=document.createElement("div");d.textContent=`${k}  ${done} ${type} ${sleep}`;
+    d.onclick=()=>{showTab('daily');$("date").value=k;loadDate()};h.appendChild(d);});
+}
+
+/* ---------- tabs ---------- */
+function showTab(t){
+  ["daily","weekly","plan","report"].forEach(x=>{
+    $("pane-"+x).classList.toggle("active",x===t);
+    $("tab-"+x).classList.toggle("active",x===t);
+  });
+  if(t==="weekly")renderWeekly();
+  if(t==="plan")renderPlan();
+  if(t==="report")renderReport();
+}
+
+/* ---------- weekly ---------- */
+function shiftWeek(n){weekMon.setDate(weekMon.getDate()+7*n);weekMon=new Date(weekMon);renderWeekly()}
+function thisWeek(){weekMon=mondayOf(new Date());renderWeekly()}
+function weekDays(){const a=[];for(let i=0;i<7;i++){const d=new Date(weekMon);d.setDate(d.getDate()+i);a.push(d)}return a}
+function renderWeekly(){
+  const days=weekDays();
+  $("weekLabel").textContent=`${ymd(days[0])} → ${ymd(days[6])}`;
+  let workouts=0,hiit=0,zone2=0,strength=0,sleepSum=0,sleepN=0,habitSum=0,habitDays=0;
+  const tb=$("weekTable").querySelector("tbody");tb.innerHTML="";
+  const dow=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  days.forEach((d,i)=>{
+    const e=store[ymd(d)]||{chk:{},val:{},wins:[]};
+    const t=(e.val&&e.val.s_type)||"";
+    const done=e.chk&&e.chk.s_done;
+    if(done)workouts++;
+    if(t.startsWith("HIIT")&&e.chk&&e.chk.s_zone)hiit++;
+    if(t.startsWith("Zone 2"))zone2++;
+    if(t==="Strength")strength++;
+    const sl=parseFloat(e.val&&e.val.sleep);if(!isNaN(sl)){sleepSum+=sl;sleepN++}
+    let hc=0;HABITS.forEach(h=>{if(e.chk&&e.chk[h])hc++});
+    if(Object.keys(e.chk||{}).length){habitSum+=hc;habitDays++}
+    const wins=(e.wins||[]).filter(w=>w.done).length;
+    const pt=plan.scheduled&&plan.scheduled[ymd(d)];
+    let planCell="";
+    if(pt){const pb=bucketOfType(pt);const short=pb==="Zone 2"?"Z2":(pb==="Strength"?"Str":pb);
+      const ab=sessionBucket(e);const isDone=e.chk&&e.chk.s_done;
+      if(pb==="Rest")planCell="<span class='no'>rest</span>";
+      else if(ymd(d)<=todayStr())planCell=short+" "+((isDone&&ab===pb)?"<span class='yes'>✓</span>":"<span class='bad'>✗</span>");
+      else planCell="<span class='no'>"+short+"</span>";
+    }
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${dow[i]} ${ymd(d).slice(5)}</td>
+      <td>${done?"🏋️ ":""}${t||"<span class='no'>—</span>"}</td>
+      <td>${t.startsWith("HIIT")?(e.chk&&e.chk.s_zone?"<span class='yes'>✓</span>":"<span class='bad'>✗</span>"):""}</td>
+      <td>${isNaN(sl)?"":sl+"h"}</td>
+      <td>${hc}/8</td>
+      <td>${wins?("✅×"+wins):""}</td>
+      <td>${planCell}</td>`;
+    tr.onclick=()=>{showTab('daily');$("date").value=ymd(d);loadDate()};
+    tr.style.cursor="pointer";tb.appendChild(tr);
+  });
+  const avgSleep=sleepN?(sleepSum/sleepN):0;
+  const habitPct=habitDays?Math.round(100*habitSum/(habitDays*8)):0;
+  const polarOK=hiit>=1&&zone2>=2;
+  const box=(n,l,cls="")=>`<div class="box"><div class="n ${cls}">${n}</div><div class="l">${l}</div></div>`;
+  $("weekKpi").innerHTML=
+    box(workouts,"Workouts")+
+    box(hiit,"True HIIT",hiit>=2?"good":(hiit>=1?"warn":"bad"))+
+    box(zone2,"Zone 2",zone2>=2?"good":"warn")+
+    box(strength,"Strength")+
+    box(avgSleep?avgSleep.toFixed(1)+"h":"—","Avg sleep",avgSleep>=7?"good":(avgSleep?"warn":""))+
+    box(habitPct+"%","Habits",habitPct>=70?"good":(habitPct>=40?"warn":"bad"));
+  $("polarNote").innerHTML = polarOK
+    ? "✅ Polarized: ≥1 true HIIT + ≥2 Zone 2 this week. Keep hard hard, easy easy."
+    : "⚠️ Not yet polarized this week — aim for 2 true HIIT (159–168 bpm) + 2 Zone 2 (&lt;124 bpm), avoid grey zone.";
+}
+
+/* ---------- report / charts ---------- */
+function fit(cv,h){const dpr=window.devicePixelRatio||1;const w=cv.clientWidth||600;cv.width=w*dpr;cv.height=h*dpr;
+  const ctx=cv.getContext("2d");ctx.setTransform(dpr,0,0,dpr,0,0);return {ctx,w,h}}
+function metricSeries(field){
+  const pts=[];Object.keys(store).sort().forEach(d=>{
+    const v=parseFloat(store[d].val&&store[d].val[field]);
+    if(!isNaN(v))pts.push({t:new Date(d+"T00:00"),v});
+  });return pts;
+}
+function lineChart(cvId,title,pts,color,goodDir){
+  const cv=$(cvId);const {ctx,w,h}=fit(cv,cv.getAttribute("height")*1);
+  ctx.clearRect(0,0,w,h);const pad={l:38,r:14,t:22,b:22};
+  ctx.fillStyle="#e7eef5";ctx.font="12px sans-serif";ctx.fillText(title,pad.l,14);
+  if(pts.length<1){ctx.fillStyle="#8ba0b3";ctx.fillText("No data logged yet",pad.l,h/2);return;}
+  const ts=pts.map(p=>p.t.getTime()),vs=pts.map(p=>p.v);
+  let tmin=Math.min(...ts),tmax=Math.max(...ts);if(tmin===tmax){tmin-=864e5;tmax+=864e5}
+  let vmin=Math.min(...vs),vmax=Math.max(...vs);if(vmin===vmax){vmin-=1;vmax+=1}
+  const vp=(vmax-vmin)*0.12;vmin-=vp;vmax+=vp;
+  const X=t=>pad.l+(t-tmin)/(tmax-tmin)*(w-pad.l-pad.r);
+  const Y=v=>pad.t+(1-(v-vmin)/(vmax-vmin))*(h-pad.t-pad.b);
+  ctx.strokeStyle="#26323f";ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,h-pad.b);ctx.lineTo(w-pad.r,h-pad.b);ctx.stroke();
+  ctx.fillStyle="#8ba0b3";ctx.font="10px sans-serif";
+  for(let i=0;i<=3;i++){const v=vmin+(vmax-vmin)*i/3,y=Y(v);ctx.fillText(v.toFixed(0),4,y+3);
+    ctx.strokeStyle="#1b2732";ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();}
+  const sp=pts.slice().sort((a,b)=>a.t-b.t);
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();
+  sp.forEach((p,i)=>{const x=X(p.t.getTime()),y=Y(p.v);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();
+  ctx.fillStyle=color;sp.forEach(p=>{ctx.beginPath();ctx.arc(X(p.t.getTime()),Y(p.v),2.5,0,7);ctx.fill()});
+  if(sp.length>=2){const d=sp[sp.length-1].v-sp[0].v;const good=(d>0&&goodDir==="up")||(d<0&&goodDir==="down");
+    ctx.fillStyle=good?"#68d391":(d===0?"#8ba0b3":"#fc8181");ctx.font="11px sans-serif";
+    ctx.fillText((d>0?"+":"")+d.toFixed(1),w-pad.r-40,14);}
+}
+function isoWeek(d){const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()+3-((x.getDay()+6)%7));
+  const w1=new Date(x.getFullYear(),0,4);return x.getFullYear()+"-W"+String(1+Math.round(((x-w1)/864e5-3+((w1.getDay()+6)%7))/7)).padStart(2,"0")}
+function weeklyAgg(){
+  const wk={};Object.keys(store).forEach(d=>{
+    const k=isoWeek(new Date(d+"T00:00"));wk[k]=wk[k]||{workouts:0,hiit:0,sleepSum:0,sleepN:0};
+    const e=store[d];const t=(e.val&&e.val.s_type)||"";
+    if(e.chk&&e.chk.s_done)wk[k].workouts++;
+    if(t.startsWith("HIIT")&&e.chk&&e.chk.s_zone)wk[k].hiit++;
+    const sl=parseFloat(e.val&&e.val.sleep);if(!isNaN(sl)){wk[k].sleepSum+=sl;wk[k].sleepN++}
+  });return wk;
+}
+function barSleepChart(){
+  const wk=weeklyAgg();const keys=Object.keys(wk).sort().slice(-12);
+  // training bars
+  const cv=$("c_train");const {ctx,w,h}=fit(cv,220);ctx.clearRect(0,0,w,h);
+  const pad={l:30,r:12,t:22,b:40};ctx.fillStyle="#e7eef5";ctx.font="12px sans-serif";ctx.fillText("Workouts (grey) vs true HIIT (teal) per week",pad.l,14);
+  if(!keys.length){ctx.fillStyle="#8ba0b3";ctx.fillText("No data yet",pad.l,h/2);}
+  else{
+    const maxV=Math.max(4,...keys.map(k=>wk[k].workouts));
+    const bw=(w-pad.l-pad.r)/keys.length;
+    const Y=v=>pad.t+(1-v/maxV)*(h-pad.t-pad.b);
+    ctx.strokeStyle="#26323f";ctx.beginPath();ctx.moveTo(pad.l,h-pad.b);ctx.lineTo(w-pad.r,h-pad.b);ctx.stroke();
+    ctx.fillStyle="#8ba0b3";ctx.font="9px sans-serif";
+    for(let i=0;i<=maxV;i+=Math.ceil(maxV/4)){const y=Y(i);ctx.fillText(i,6,y+3)}
+    keys.forEach((k,i)=>{
+      const x=pad.l+i*bw;const wq=wk[k];
+      ctx.fillStyle="#3b4a59";ctx.fillRect(x+bw*0.15,Y(wq.workouts),bw*0.7,(h-pad.b)-Y(wq.workouts));
+      ctx.fillStyle="#4fd1c5";ctx.fillRect(x+bw*0.28,Y(wq.hiit),bw*0.44,(h-pad.b)-Y(wq.hiit));
+      ctx.save();ctx.translate(x+bw/2,h-pad.b+4);ctx.rotate(Math.PI/4);ctx.fillStyle="#8ba0b3";ctx.font="9px sans-serif";ctx.fillText(k.slice(2),0,0);ctx.restore();
+    });
+  }
+  // sleep line
+  const cv2=$("c_sleep");const r=fit(cv2,180);const c=r.ctx,W=r.w,H=r.h;c.clearRect(0,0,W,H);
+  const p2={l:30,r:12,t:22,b:40};c.fillStyle="#e7eef5";c.font="12px sans-serif";c.fillText("Avg sleep per week (h)",p2.l,14);
+  const sPts=keys.filter(k=>wk[k].sleepN).map(k=>({k,v:wk[k].sleepSum/wk[k].sleepN}));
+  if(!sPts.length){c.fillStyle="#8ba0b3";c.fillText("No sleep logged yet",p2.l,H/2);}
+  else{
+    let vmin=Math.min(5,...sPts.map(p=>p.v)),vmax=Math.max(8,...sPts.map(p=>p.v));
+    const X=i=>p2.l+i/(Math.max(1,keys.length-1))*(W-p2.l-p2.r);
+    const Y=v=>p2.t+(1-(v-vmin)/(vmax-vmin))*(H-p2.t-p2.b);
+    c.strokeStyle="#1b2732";[6,7,8].forEach(g=>{if(g>=vmin&&g<=vmax){const y=Y(g);c.beginPath();c.moveTo(p2.l,y);c.lineTo(W-p2.r,y);c.stroke();c.fillStyle="#8ba0b3";c.font="9px sans-serif";c.fillText(g+"h",6,y+3)}});
+    c.strokeStyle="#68d391";c.lineWidth=2;c.beginPath();
+    sPts.forEach((p,i)=>{const xi=keys.indexOf(p.k);const x=X(xi),y=Y(p.v);i?c.lineTo(x,y):c.moveTo(x,y)});c.stroke();
+    c.fillStyle="#68d391";sPts.forEach(p=>{const xi=keys.indexOf(p.k);c.beginPath();c.arc(X(xi),Y(p.v),2.5,0,7);c.fill()});
+  }
+}
+function renderReport(){
+  renderAdherence();
+  barSleepChart();
+  lineChart("c_vo2","VO₂max",metricSeries("m_vo2"),"#4fd1c5","up");
+  lineChart("c_rhr","Resting HR (want ↓)",metricSeries("m_rhr"),"#f6ad55","down");
+  lineChart("c_hrv","HRV SDNN (want ↑)",metricSeries("m_hrv"),"#63b3ed","up");
+  lineChart("c_waist","Waist in (want ↓)",metricSeries("m_waist"),"#fc8181","down");
+}
+
+/* ---------- plan (targets + planned schedule) ---------- */
+const PKEY="healthPlanV1";
+function defaultPlan(){return {
+  targets:{
+    "HIIT":{perWeek:2,gap:4},
+    "Zone 2":{perWeek:2,gap:0},
+    "Strength":{perWeek:1,gap:0},
+    "__any":{gap:5}
+  },
+  scheduled:{}
+};}
+function loadPlan(){try{const p=JSON.parse(localStorage.getItem(PKEY));return (p&&p.targets)?p:defaultPlan()}catch(e){return defaultPlan()}}
+let plan=loadPlan();
+function savePlan(){localStorage.setItem(PKEY,JSON.stringify(plan));flash("Plan saved ✓");
+  updatePlannedToday();
+  if($("pane-plan").classList.contains("active"))renderPlan();
+  if($("pane-weekly").classList.contains("active"))renderWeekly();
+  if($("pane-report").classList.contains("active"))renderReport();}
+
+/* map a session type string to a canonical bucket */
+function bucketOfType(t){t=t||"";if(t.startsWith("HIIT"))return"HIIT";if(t.startsWith("Zone 2"))return"Zone 2";
+  if(t==="Strength")return"Strength";if(t==="Walk")return"Walk";if(t==="Rest")return"Rest";return"Other";}
+function sessionBucket(e){return bucketOfType(e&&e.val&&e.val.s_type);}
+
+/* --- Plan tab: targets editor --- */
+function renderPlanTargets(){
+  const tb=$("planTargets").querySelector("tbody");tb.innerHTML="";
+  ["HIIT","Zone 2","Strength"].forEach(k=>{
+    const t=plan.targets[k]||{perWeek:0,gap:0};
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${k}</td>
+      <td><input type="number" min="0" max="14" step="1" style="width:70px" value="${t.perWeek||0}" data-k="${k}" data-f="perWeek"></td>
+      <td><input type="number" min="0" max="30" step="1" style="width:70px" value="${t.gap||0}" data-k="${k}" data-f="gap"></td>`;
+    tb.appendChild(tr);
+  });
+  $("p_anygap").value=(plan.targets.__any&&plan.targets.__any.gap)||0;
+}
+function savePlanTargets(){
+  document.querySelectorAll("#planTargets input").forEach(inp=>{
+    const k=inp.dataset.k,f=inp.dataset.f;if(!k)return;
+    plan.targets[k]=plan.targets[k]||{};
+    plan.targets[k][f]=Math.max(0,parseInt(inp.value||0)||0);
+  });
+  plan.targets.__any={gap:Math.max(0,parseInt($("p_anygap").value||0)||0)};
+  savePlan();
+}
+function resetPlanDefaults(){plan.targets=defaultPlan().targets;savePlan();}
+
+/* --- Plan tab: planned schedule --- */
+function applyTemplate(off){
+  const mon=mondayOf(new Date());mon.setDate(mon.getDate()+7*off);
+  const tmpl={1:"HIIT 4×4",2:"Zone 2 (CP)",3:"Strength",5:"HIIT 4×4",6:"Zone 2 (CP)"}; // 0=Mon..6=Sun
+  for(let i=0;i<7;i++){if(!tmpl[i])continue;const d=new Date(mon);d.setDate(d.getDate()+i);plan.scheduled[ymd(d)]=tmpl[i];}
+  savePlan();
+}
+function addPlanned(){const d=$("p_date").value;if(!d){flash("Pick a date");return;}plan.scheduled[d]=$("p_type").value;savePlan();}
+function delPlanned(d){delete plan.scheduled[d];savePlan();}
+function renderPlanList(){
+  const tb=$("planList").querySelector("tbody");tb.innerHTML="";
+  const keys=Object.keys(plan.scheduled||{}).sort();
+  if(!keys.length){tb.innerHTML="<tr><td colspan='4' class='muted'>Nothing planned yet.</td></tr>";return;}
+  const tstr=todayStr();
+  keys.forEach(d=>{
+    const type=plan.scheduled[d];const pb=bucketOfType(type);const e=store[d];const ab=sessionBucket(e);const isDone=e&&e.chk&&e.chk.s_done;
+    let status;
+    if(pb==="Rest"){status="<span class='no'>rest day</span>";}
+    else if(d>tstr){status="<span class='no'>upcoming</span>";}
+    else if(isDone&&ab===pb){status="<span class='yes'>✓ done</span>";}
+    else if(isDone&&ab&&ab!=="Other"){status="<span class='warn'>≠ did "+ab+"</span>";}
+    else{status="<span class='bad'>✗ missed</span>";}
+    const tr=document.createElement("tr");
+    if(d<tstr)tr.style.opacity="0.72";
+    tr.innerHTML=`<td>${d}${d===tstr?" (today)":""}</td><td>${type}</td><td>${status}</td>
+      <td><button class="del" title="remove" onclick="delPlanned('${d}')">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+function renderPlan(){renderPlanTargets();renderPlanList();if(!$("p_date").value)$("p_date").value=todayStr();}
+function updatePlannedToday(){
+  const el=$("plannedToday");if(!el)return;
+  const t=plan.scheduled&&plan.scheduled[$("date").value];
+  el.innerHTML=t?`📆 <b>Planned for this day:</b> ${t}`:"";
+}
+
+/* ---------- adherence (report) ---------- */
+function dateKeys(){return Object.keys(store).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort();}
+function daysBetween(a,b){return Math.round((b-a)/864e5);}
+function occDates(bucket,requireZone){
+  const out=[];dateKeys().forEach(k=>{const e=store[k];if(!(e&&e.chk&&e.chk.s_done))return;
+    if(sessionBucket(e)!==bucket)return;if(requireZone&&!(e.chk&&e.chk.s_zone))return;
+    out.push(new Date(k+"T00:00"));});return out;}
+function trainingDates(){
+  const out=[];dateKeys().forEach(k=>{const e=store[k];if(!(e&&e.chk&&e.chk.s_done))return;
+    const b=sessionBucket(e);if(b==="HIIT"||b==="Zone 2"||b==="Strength")out.push(new Date(k+"T00:00"));});return out;}
+function gapStats(dates,start,today){
+  let cur=null,longest=null;
+  const inWin=dates.filter(d=>d>=start&&d<=today);
+  if(dates.length){cur=daysBetween(dates[dates.length-1],today);}
+  const pts=[start,...inWin,today];
+  for(let i=1;i<pts.length;i++){const g=daysBetween(pts[i-1],pts[i]);if(longest==null||g>longest)longest=g;}
+  return {cur,longest,countWin:inWin.length};
+}
+function renderAdherence(){
+  const windowDays=28,weeks=windowDays/7;
+  const today=new Date(todayStr()+"T00:00");
+  const start=new Date(today);start.setDate(start.getDate()-(windowDays-1));
+  $("adhWindow").textContent="· last "+windowDays+" days";
+  const rules=[
+    {name:"HIIT (true, in-zone)",bucket:"HIIT",zone:true},
+    {name:"Zone 2",bucket:"Zone 2"},
+    {name:"Strength",bucket:"Strength"}
+  ];
+  const tb=$("adhTable").querySelector("tbody");tb.innerHTML="";let kpi="";
+  rules.forEach(r=>{
+    const cfg=plan.targets[r.bucket]||{perWeek:0,gap:0};
+    const gs=gapStats(occDates(r.bucket,r.zone),start,today);
+    const target=Math.round((cfg.perWeek||0)*weeks);
+    const done=gs.countWin;
+    const pct=target>0?Math.min(100,Math.round(100*done/target)):(done>0?100:0);
+    const N=cfg.gap||0;
+    const gapCls=N?(gs.cur==null?"bad":(gs.cur<=N?"good":(gs.cur<=N*1.5?"warn":"bad"))):"";
+    const pctCls=pct>=90?"good":(pct>=60?"warn":"bad");
+    const curTxt=gs.cur==null?"—":(gs.cur+"d"+(N?"/"+N:""));
+    const longTxt=gs.longest==null?"—":gs.longest+"d";
+    tb.innerHTML+=`<tr><td>${r.name}${N?" <span class='muted'>(every ~"+N+"d)</span>":""}</td>
+      <td>${done}</td><td>${target||"—"}</td>
+      <td class="${gapCls}">${curTxt}</td><td>${longTxt}</td>
+      <td class="${pctCls}">${pct}%</td></tr>`;
+    kpi+=`<div class="box"><div class="n ${pctCls}">${pct}%</div><div class="l">${r.bucket}</div></div>`;
+  });
+  const anyN=(plan.targets.__any&&plan.targets.__any.gap)||0;
+  const tgs=gapStats(trainingDates(),start,today);
+  const anyCls=anyN?(tgs.cur==null?"bad":(tgs.cur<=anyN?"good":"bad")):"";
+  const longBad=anyN&&tgs.longest!=null&&tgs.longest>anyN?"bad":"";
+  tb.innerHTML+=`<tr><td>No training gap${anyN?" > "+anyN+"d":""}</td>
+    <td>${tgs.countWin}</td><td>—</td>
+    <td class="${anyCls}">${tgs.cur==null?"—":(tgs.cur+"d"+(anyN?"/"+anyN:""))}</td>
+    <td class="${longBad}">${tgs.longest==null?"—":tgs.longest+"d"}</td><td>—</td></tr>`;
+  kpi+=`<div class="box"><div class="n ${anyCls}">${tgs.cur==null?"—":tgs.cur+"d"}</div><div class="l">Since training</div></div>`;
+  $("adhKpi").innerHTML=kpi;
+  // planned vs actual
+  const tstr=todayStr();let past=0,met=0,upcoming=0;
+  Object.keys(plan.scheduled||{}).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).forEach(d=>{
+    const pb=bucketOfType(plan.scheduled[d]);if(pb==="Rest")return;
+    if(d>tstr){upcoming++;return;}
+    past++;const e=store[d];if(e&&e.chk&&e.chk.s_done&&sessionBucket(e)===pb)met++;
+  });
+  $("adhPlanNote").innerHTML = past
+    ? `Planned vs actual: <b>${met}/${past}</b> planned sessions completed (${Math.round(100*met/past)}%).${upcoming?" "+upcoming+" upcoming.":""}`
+    : (upcoming?`${upcoming} planned session(s) upcoming — none due yet.`:"No planned sessions yet — add some in the Plan tab.");
+}
+
+/* ---------- backup ---------- */
+function download(name,text,type){const b=new Blob([text],{type});const a=document.createElement("a");
+  a.href=URL.createObjectURL(b);a.download=name;a.click();URL.revokeObjectURL(a.href)}
+function exportJSON(){download(`health_log_${todayStr()}.json`,JSON.stringify({store,plan},null,2),"application/json")}
+function exportCSV(){
+  const cols=["date",...FIELDS_CHK,...FIELDS_VAL,"wins"];const rows=[cols.join(",")];
+  Object.keys(store).sort().forEach(d=>{const e=store[d];const cell=v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`;
+    const line=[d];FIELDS_CHK.forEach(f=>line.push(e.chk&&e.chk[f]?1:0));
+    FIELDS_VAL.forEach(f=>line.push(cell((e.val&&e.val[f])||"")));
+    line.push(cell((e.wins||[]).map(w=>(w.done?"[x] ":"[ ] ")+w.text).join(" | ")));
+    rows.push(line.join(","))});
+  download(`health_log_${todayStr()}.csv`,rows.join("\n"),"text/csv")}
+function importJSON(ev){const f=ev.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{const d=JSON.parse(r.result);
+    if(d&&d.store){store=Object.assign(store,d.store);if(d.plan&&d.plan.targets){plan=d.plan;localStorage.setItem(PKEY,JSON.stringify(plan));}}
+    else{store=Object.assign(store,d);}
+    save();loadDate();flash("Imported ✓")}catch(e){alert("Invalid JSON")}};r.readAsText(f)}
+
+/* ---------- init ---------- */
+FIELDS_CHK.concat(FIELDS_VAL).forEach(f=>$(f).addEventListener("input",persist));
+$("date").value=todayStr();loadDate();renderHist();
+window.addEventListener("resize",()=>{if($("pane-report").classList.contains("active"))renderReport()});
+</script>
+</body>
+</html>
